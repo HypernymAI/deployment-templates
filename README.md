@@ -1,6 +1,6 @@
 # Hypernym Deployment Templates
 
-AWS CloudFormation and Helm templates for deploying Hypernym API on AWS via AWS Marketplace.
+Infrastructure as Code templates for deploying Hypernym API on AWS via AWS Marketplace.
 
 ## Overview
 
@@ -9,7 +9,13 @@ This repository contains deployment templates for running Hypernym API on AWS in
 - **ECS Fargate**: Serverless container deployment
 - **EKS (Kubernetes)**: Flexible cluster-based deployment
 
-Both deployment options support:
+### Deployment Methods
+
+- **[Terraform Module](terraform/)**: Modern IaC with modules for ECS and EKS (Recommended)
+- **[CloudFormation Templates](cloudformation/)**: Native AWS templates
+- **[Helm Charts](helm/)**: For existing Kubernetes clusters
+
+All deployment methods support:
 - ✅ **Managed Mode**: Use Sibylline's managed inference service
 - ✅ **BYOP Mode**: Bring your own provider (OpenAI, Anthropic, etc.)
 - ✅ **Private Networking**: Internal ALB with VPC endpoints
@@ -19,13 +25,64 @@ Both deployment options support:
 
 ## Quick Start
 
+### Choose Your Deployment Method
+
+**Terraform (Recommended)**
+```bash
+cd terraform/examples/ecs-managed
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your configuration
+terraform init
+terraform apply
+```
+
+**CloudFormation**
+```bash
+cd cloudformation
+aws cloudformation create-stack \
+  --stack-name hypernym-ecs \
+  --template-body file://ecs-fargate.yaml \
+  --parameters file://examples/ecs-managed-params.json \
+  --capabilities CAPABILITY_NAMED_IAM
+```
+
 ### Prerequisites
 
 - AWS CLI configured with appropriate credentials
-- For EKS: `kubectl` and `helm` installed
-- AWS account with permissions for CloudFormation, ECS/EKS, IAM, VPC
+- Terraform >= 1.5.0 (for Terraform deployments)
+- kubectl and Helm (for EKS deployments)
+- AWS account with permissions for ECS/EKS, IAM, VPC
 
-### Deploy to ECS Fargate
+## Deployment Options
+
+### Terraform Module (Recommended)
+
+Modern Infrastructure as Code with modular design:
+
+```hcl
+module "hypernym" {
+  source = "./terraform"
+
+  deployment_target       = "ecs"  # or "eks"
+  container_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/hypernym:latest"
+  product_code            = "abc123xyz456"
+  inference_provider_mode = "managed"  # or "byop"
+}
+```
+
+**Benefits:**
+- Single module for both ECS and EKS
+- Better variable validation
+- Cleaner state management
+- Easier to version and reuse
+
+See [Terraform documentation](terraform/) for complete guide.
+
+### CloudFormation Templates
+
+Native AWS templates for infrastructure deployment.
+
+#### Deploy to ECS Fargate
 
 1. **Update Parameters**:
    ```bash
@@ -57,7 +114,7 @@ Both deployment options support:
      --output text
    ```
 
-### Deploy to EKS
+#### Deploy to EKS
 
 1. **Deploy EKS Infrastructure**:
    ```bash
@@ -97,21 +154,39 @@ Both deployment options support:
 
 ```
 deployment-templates/
-├── cloudformation/
+├── terraform/                    # Terraform module (Recommended)
+│   ├── main.tf                   # Root module orchestration
+│   ├── variables.tf              # Input variables
+│   ├── outputs.tf                # Output values
+│   ├── modules/                  # Sub-modules
+│   │   ├── networking/           # VPC, ALB, security groups
+│   │   ├── iam/                  # IAM roles with conditional policies
+│   │   ├── ecs/                  # ECS cluster and services
+│   │   └── eks/                  # EKS cluster and Helm deployment
+│   ├── examples/                 # Complete usage examples
+│   │   ├── ecs-managed/
+│   │   ├── ecs-byop/
+│   │   ├── eks-managed/
+│   │   └── eks-byop/
+│   └── docs/                     # Terraform documentation
+│       ├── terraform-setup.md
+│       ├── configuration.md
+│       └── migration.md
+├── cloudformation/               # CloudFormation templates
 │   ├── ecs-fargate.yaml          # ECS Fargate deployment
 │   └── eks.yaml                  # EKS cluster infrastructure
-├── helm/
+├── helm/                         # Helm charts
 │   └── hypernym/                 # Helm chart for EKS
 │       ├── Chart.yaml
 │       ├── values.yaml
 │       └── templates/
-├── examples/
+├── examples/                     # CloudFormation examples
 │   ├── ecs-managed-params.json   # ECS managed mode parameters
 │   ├── ecs-byop-params.json      # ECS BYOP mode parameters
 │   ├── eks-managed-values.yaml   # EKS managed mode values
 │   ├── eks-byop-values.yaml      # EKS BYOP mode values
 │   └── byop-secret-template.json # BYOP secrets format
-├── docs/
+├── docs/                         # General documentation
 │   ├── deployment-guide.md       # Detailed deployment steps
 │   ├── architecture.md           # Architecture documentation
 │   ├── parameters.md             # Parameter reference

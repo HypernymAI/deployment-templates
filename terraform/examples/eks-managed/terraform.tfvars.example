@@ -1,0 +1,23 @@
+aws_region      = "us-east-1"
+project_name    = "hypernym"
+container_image = "<AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/<TODO_REPOSITORY_NAME>:latest"
+product_code    = "TODO-marketplace-product-code"
+
+managed_api_url = "http://one-api-service:8080"
+
+vpc_cidr             = "10.0.0.0/16"
+private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+
+desired_count = 2
+min_capacity  = 2
+max_capacity  = 10
+
+eks_node_instance_type = "t3.medium"
+eks_node_min_size      = 2
+eks_node_max_size      = 4
+eks_node_desired_size  = 2
+
+tags = {
+  Environment = "production"
+  Team        = "platform"
+}

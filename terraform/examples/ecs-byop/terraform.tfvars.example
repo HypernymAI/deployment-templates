@@ -1,0 +1,21 @@
+aws_region      = "us-east-1"
+project_name    = "hypernym"
+container_image = "<AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/<TODO_REPOSITORY_NAME>:latest"
+product_code    = "TODO-marketplace-product-code"
+
+byop_secret_arn = "arn:aws:secretsmanager:<REGION>:<AWS_ACCOUNT_ID>:secret:hypernym-byop-credentials-xxxxxx"
+
+vpc_cidr             = "10.0.0.0/16"
+private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+
+task_cpu    = "512"
+task_memory = "1024"
+
+desired_count = 2
+min_capacity  = 2
+max_capacity  = 10
+
+tags = {
+  Environment = "production"
+  Team        = "platform"
+}
