@@ -1,0 +1,33 @@
+image:
+  repository: "<AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/<TODO_REPOSITORY_NAME>"
+  tag: "latest"
+
+inferenceProviderMode: "managed"
+
+managed:
+  apiUrl: "http://one-api-service:8080"
+
+marketplace:
+  productCode: "TODO-marketplace-product-code"
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<STACK_NAME>-pod-role"
+  name: "hypernym-api"
+
+replicaCount: 2
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70

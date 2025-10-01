@@ -1,0 +1,37 @@
+image:
+  repository: "<AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/<TODO_REPOSITORY_NAME>"
+  tag: "latest"
+
+inferenceProviderMode: "byop"
+
+byop:
+  secretName: "hypernym-byop-credentials"
+  secretKeys:
+    providerUrl: "provider_url"
+    apiKey: "api_key"
+    modelName: "model_name"
+
+marketplace:
+  productCode: "TODO-marketplace-product-code"
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<STACK_NAME>-pod-role"
+  name: "hypernym-api"
+
+replicaCount: 2
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70

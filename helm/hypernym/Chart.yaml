@@ -1,0 +1,14 @@
+apiVersion: v2
+name: hypernym
+description: Hypernym API - AWS Marketplace deployment
+version: 1.0.0
+appVersion: "0.2.1"
+keywords:
+  - hypernym
+  - ai
+  - inference
+  - marketplace
+home: https://github.com/sibylline/hypernym
+maintainers:
+  - name: Sibylline
+    email: dan@sibylline.group

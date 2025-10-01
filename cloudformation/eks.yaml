@@ -1,0 +1,468 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Hypernym API - EKS cluster deployment with IRSA for AWS Marketplace'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Cluster Configuration'
+        Parameters:
+          - ClusterName
+          - KubernetesVersion
+      - Label:
+          default: 'Network Configuration'
+        Parameters:
+          - VpcCIDR
+          - PrivateSubnet1CIDR
+          - PrivateSubnet2CIDR
+      - Label:
+          default: 'Node Group Configuration'
+        Parameters:
+          - NodeInstanceType
+          - MinNodes
+          - MaxNodes
+          - DesiredNodes
+      - Label:
+          default: 'Application Configuration'
+        Parameters:
+          - Namespace
+          - ServiceAccountName
+          - MarketplaceProductCode
+          - InferenceProviderMode
+          - SecretsManagerSecretARN
+
+Parameters:
+  ClusterName:
+    Type: String
+    Description: 'Name for the EKS cluster'
+    Default: 'hypernym-cluster'
+
+  KubernetesVersion:
+    Type: String
+    Description: 'Kubernetes version'
+    Default: '1.31'
+    AllowedValues:
+      - '1.31'
+      - '1.30'
+      - '1.29'
+
+  VpcCIDR:
+    Type: String
+    Description: 'CIDR block for the VPC'
+    Default: '10.0.0.0/16'
+    AllowedPattern: '^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$'
+
+  PrivateSubnet1CIDR:
+    Type: String
+    Description: 'CIDR block for private subnet in AZ1'
+    Default: '10.0.1.0/24'
+    AllowedPattern: '^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$'
+
+  PrivateSubnet2CIDR:
+    Type: String
+    Description: 'CIDR block for private subnet in AZ2'
+    Default: '10.0.2.0/24'
+    AllowedPattern: '^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$'
+
+  NodeInstanceType:
+    Type: String
+    Description: 'EC2 instance type for worker nodes'
+    Default: 't3.medium'
+    AllowedValues:
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+      - m5.large
+      - m5.xlarge
+
+  MinNodes:
+    Type: Number
+    Description: 'Minimum number of worker nodes'
+    Default: 2
+    MinValue: 1
+
+  MaxNodes:
+    Type: Number
+    Description: 'Maximum number of worker nodes'
+    Default: 10
+    MinValue: 1
+
+  DesiredNodes:
+    Type: Number
+    Description: 'Desired number of worker nodes'
+    Default: 2
+    MinValue: 1
+
+  Namespace:
+    Type: String
+    Description: 'Kubernetes namespace for the application'
+    Default: 'hypernym'
+
+  ServiceAccountName:
+    Type: String
+    Description: 'Kubernetes service account name'
+    Default: 'hypernym-api'
+
+  MarketplaceProductCode:
+    Type: String
+    Description: 'AWS Marketplace Product Code (TODO: Update with actual product code)'
+    Default: 'TODO-marketplace-product-code'
+
+  InferenceProviderMode:
+    Type: String
+    Description: 'Inference provider mode: managed or byop'
+    AllowedValues:
+      - managed
+      - byop
+    Default: managed
+
+  SecretsManagerSecretARN:
+    Type: String
+    Description: 'ARN of AWS Secrets Manager secret containing BYOP credentials (required for BYOP mode)'
+    Default: ''
+
+Conditions:
+  IsBYOPMode: !Equals [!Ref InferenceProviderMode, 'byop']
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpc'
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Product
+          Value: Hypernym
+        - Key: !Sub 'kubernetes.io/cluster/${ClusterName}'
+          Value: shared
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-private-subnet-1'
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: !Sub 'kubernetes.io/cluster/${ClusterName}'
+          Value: shared
+        - Key: kubernetes.io/role/internal-elb
+          Value: '1'
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-private-subnet-2'
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: !Sub 'kubernetes.io/cluster/${ClusterName}'
+          Value: shared
+        - Key: kubernetes.io/role/internal-elb
+          Value: '1'
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-private-rt'
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  VPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for VPC endpoints
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCIDR
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpce-sg'
+
+  ECRAPIEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.api'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  ECRDKREndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.dkr'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: IsBYOPMode
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.secretsmanager'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  CloudWatchLogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.logs'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EKS cluster control plane
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cluster-sg'
+
+  ClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-cluster-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSVPCResourceController
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cluster-role'
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      Version: !Ref KubernetesVersion
+      RoleArn: !GetAtt ClusterRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref ClusterSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+        EndpointPrivateAccess: true
+        EndpointPublicAccess: true
+      Logging:
+        ClusterLogging:
+          EnabledTypes:
+            - Type: api
+            - Type: audit
+            - Type: authenticator
+            - Type: controllerManager
+            - Type: scheduler
+      Tags:
+        - Key: Name
+          Value: !Ref ClusterName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  NodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-node-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-node-role'
+
+  NodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
+    Properties:
+      NodegroupName: !Sub '${ClusterName}-node-group'
+      ClusterName: !Ref EKSCluster
+      NodeRole: !GetAtt NodeRole.Arn
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      InstanceTypes:
+        - !Ref NodeInstanceType
+      ScalingConfig:
+        MinSize: !Ref MinNodes
+        MaxSize: !Ref MaxNodes
+        DesiredSize: !Ref DesiredNodes
+      UpdateConfig:
+        MaxUnavailable: 1
+      Tags:
+        Name: !Sub '${ClusterName}-node-group'
+        ManagedBy: CloudFormation
+
+  OIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: !GetAtt EKSCluster.OpenIdConnectIssuerUrl
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 9e99a48a9960b14926bb7f3b02e22da2b0ab7280
+
+  PodRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-pod-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref OIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub '${OIDCProvider}:sub': !Sub 'system:serviceaccount:${Namespace}:${ServiceAccountName}'
+                !Sub '${OIDCProvider}:aud': sts.amazonaws.com
+      Policies:
+        - PolicyName: MarketplaceMetering
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - aws-marketplace:MeterUsage
+                  - aws-marketplace:RegisterUsage
+                Resource: '*'
+        - !If
+          - IsBYOPMode
+          - PolicyName: SecretsManagerAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref SecretsManagerSecretARN
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-pod-role'
+
+Outputs:
+  ClusterName:
+    Description: EKS Cluster name
+    Value: !Ref EKSCluster
+    Export:
+      Name: !Sub '${AWS::StackName}-cluster-name'
+
+  ClusterEndpoint:
+    Description: EKS Cluster endpoint
+    Value: !GetAtt EKSCluster.Endpoint
+
+  ClusterArn:
+    Description: EKS Cluster ARN
+    Value: !GetAtt EKSCluster.Arn
+
+  OIDCProviderArn:
+    Description: OIDC Provider ARN for IRSA
+    Value: !Ref OIDCProvider
+    Export:
+      Name: !Sub '${AWS::StackName}-oidc-provider-arn'
+
+  PodRoleArn:
+    Description: IAM Role ARN for pods (use in ServiceAccount annotation)
+    Value: !GetAtt PodRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-pod-role-arn'
+
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}-vpc-id'
+
+  PrivateSubnet1Id:
+    Description: Private Subnet 1 ID
+    Value: !Ref PrivateSubnet1
+
+  PrivateSubnet2Id:
+    Description: Private Subnet 2 ID
+    Value: !Ref PrivateSubnet2
+
+  Namespace:
+    Description: Kubernetes namespace for the application
+    Value: !Ref Namespace
+
+  ServiceAccountName:
+    Description: Kubernetes service account name
+    Value: !Ref ServiceAccountName
+
+  KubeconfigCommand:
+    Description: Command to update kubeconfig
+    Value: !Sub 'aws eks update-kubeconfig --region ${AWS::Region} --name ${EKSCluster}'

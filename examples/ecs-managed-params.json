@@ -1,0 +1,50 @@
+[
+  {
+    "ParameterKey": "ContainerImage",
+    "ParameterValue": "<AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/<TODO_REPOSITORY_NAME>:latest"
+  },
+  {
+    "ParameterKey": "MarketplaceProductCode",
+    "ParameterValue": "TODO-marketplace-product-code"
+  },
+  {
+    "ParameterKey": "InferenceProviderMode",
+    "ParameterValue": "managed"
+  },
+  {
+    "ParameterKey": "ManagedAPIURL",
+    "ParameterValue": "http://one-api-service:8080"
+  },
+  {
+    "ParameterKey": "ClusterName",
+    "ParameterValue": "hypernym-cluster"
+  },
+  {
+    "ParameterKey": "ServiceName",
+    "ParameterValue": "hypernym-api"
+  },
+  {
+    "ParameterKey": "TaskCPU",
+    "ParameterValue": "512"
+  },
+  {
+    "ParameterKey": "TaskMemory",
+    "ParameterValue": "1024"
+  },
+  {
+    "ParameterKey": "DesiredCount",
+    "ParameterValue": "2"
+  },
+  {
+    "ParameterKey": "VpcCIDR",
+    "ParameterValue": "10.0.0.0/16"
+  },
+  {
+    "ParameterKey": "PrivateSubnet1CIDR",
+    "ParameterValue": "10.0.1.0/24"
+  },
+  {
+    "ParameterKey": "PrivateSubnet2CIDR",
+    "ParameterValue": "10.0.2.0/24"
+  }
+]
